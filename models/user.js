@@ -46,13 +46,14 @@ class User {
          WHERE username = $1`,
       [username]);
     const user = result.rows[0];
-    if (user) {
-      if (await bcrypt.compare(password, user.password) === true) {
-        // return res.json({ message: "Logged in!" });
-        return true;
-      }
-    }
-    return false;
+    //if (user) {
+    //returns if user truthy move to second expression value
+    return user && await bcrypt.compare(password, user.password) === true;
+    // return res.json({ message: "Logged in!" });
+    //     return true;
+    //   }
+    // }
+    // return false;
     // throw new UnauthorizedError("Invalid user/password");
     // const result = await bcrypt.compare(password, user.password);
     // return result;
@@ -82,7 +83,9 @@ class User {
   static async all() {
     const results = await db.query(
       `SELECT username, first_name, last_name
-      FROM users`);
+      FROM users
+      ORDER BY username`);
+    //always add order by
     return results.rows;
 
   }
@@ -102,7 +105,11 @@ class User {
       FROM users
       WHERE username = $1`,
       [username]);
+
+    if (!results) throw new NotFoundError(`No such user: ${username}`);
+
     return results.rows[0];
+    //throw errors for not found
   }
 
   /** Return messages from this user.
@@ -156,7 +163,6 @@ class User {
             f.phone
       FROM messages m
       JOIN users f on m.from_username = f.username
-      JOIN users t on m.to_username = t.username
       WHERE m.to_username = $1`,
       [username]);
 
