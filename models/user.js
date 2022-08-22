@@ -3,33 +3,33 @@
 const db = require('../db');
 const bcrypt = require('bcrypt');
 const { UnauthorizedError } = require('../expressError');
+const BCRYPT_WORK_FACTOR = 12;
 
 /** User of the site. */
 
 class User {
 
-  constructor({ username, password, first_name, last_name, phone }) {
-    this.username = username;
-    this.password = password;
-    this.first_name = first_name;
-    this.last_name = last_name;
-    this.phone = phone;
-  }
 
   /** Register new user. Returns
    *    {username, password, first_name, last_name, phone}
    */
 
   static async register({ username, password, first_name, last_name, phone }) {
-    console.log('run register');
-    // if (username === undefined) {
+
+    const hashedPassword = await bcrypt.hash(password, BCRYPT_WORK_FACTOR);
     const result = await db.query(
       `INSERT INTO users
-            (username, password, first_name, last_name, phone, join_at, last_login_at)
-             VALUES ($1, $2, $3, $4, $5, current_timestamp, current_timestamp)
-             RETURNING username, password, first_name, last_name, phone`,
+            (username,
+            password,
+            first_name,
+            last_name,
+            phone,
+            join_at,
+            last_login_at)
+      VALUES ($1, $2, $3, $4, $5, current_timestamp, current_timestamp)
+      RETURNING username, password, first_name, last_name, phone`,
       [username,
-        password,
+        hashedPassword,
         first_name,
         last_name,
         phone],
@@ -47,22 +47,23 @@ class User {
       [username]);
     const user = result.rows[0];
     if (user) {
-      //   if (await bcrypt.compare(password, user.password) === true) {
-      //     return res.json({ message: "Logged in!" });
-      //   }
-      // }
-      // throw new UnauthorizedError("Invalid user/password");
-      const result = await bcrypt.compare(password, user.password);
-      return result;
+      if (await bcrypt.compare(password, user.password) === true) {
+        // return res.json({ message: "Logged in!" });
+        return true;
+      }
     }
-
+    return false;
+    // throw new UnauthorizedError("Invalid user/password");
+    // const result = await bcrypt.compare(password, user.password);
+    // return result;
   }
+
 
   /** Update last_login_at for user */
 
   static async updateLoginTimestamp(username) {
     const result = await db.query(
-      `UPDATE messages
+      `UPDATE users
        SET last_login_at = current_timestamp
          WHERE username = $1
          RETURNING username, last_login_at`,
@@ -82,7 +83,7 @@ class User {
     const results = await db.query(
       `SELECT username, first_name, last_name
       FROM users`);
-    return results;
+    return results.rows;
 
   }
 
@@ -113,13 +114,25 @@ class User {
    */
 
   static async messagesFrom(username) {
-    const results = await db.query(
-      `SELECT m.id, m.to_user, m.body, m.sent_at, m.read_at
-      FROM users u
-      JOIN messages m on u.username = m.from_username
-      WHERE m.to_username = $1`,
+
+    const uResults = await db.query(
+      `SELECT id, to_username, body, sent_at, read_at
+      FROM messages
+      WHERE from_username = $1`,
       [username]);
-    return results.rows[0];
+
+    const user = uResults.rows[0];
+    const toUser = user.to_username;
+
+    const mResults = await db.query(
+      `SELECT username, first_name, last_name, phone
+      FROM users u
+      WHERE username = $1`,
+      [toUser]);
+
+    user.to_user = mResults.rows[0];
+    delete user.to_username;
+    return [user];
   }
 
   /** Return messages to this user.
@@ -131,13 +144,37 @@ class User {
    */
 
   static async messagesTo(username) {
+
     const results = await db.query(
-      `SELECT m.id, m.from_user, m.body, m.sent_at, m.read_at
-      FROM users u
-      JOIN messages m on u.username = m.to_username
-      WHERE m.from_username = $1`,
+      `SELECT m.id,
+            m.body,
+            m.sent_at,
+            m.read_at,
+            f.username,
+            f.first_name,
+            f.last_name,
+            f.phone
+      FROM messages m
+      JOIN users f on m.from_username = f.username
+      JOIN users t on m.to_username = t.username
+      WHERE m.to_username = $1`,
       [username]);
-    return results.rows[0];
+
+    const m = results.rows[0];
+
+    return [{
+      id: m.id,
+      from_user: {
+        username: m.username,
+        first_name: m.first_name,
+        last_name: m.last_name,
+        phone: m.phone
+      },
+      body: m.body,
+      sent_at: m.sent_at,
+      read_at: m.read_at
+    }];
+
   }
 }
 
