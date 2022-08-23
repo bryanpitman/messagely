@@ -4,8 +4,12 @@ const Message = require("../models/message");
 
 const Router = require("express").Router;
 const router = new Router();
-// router.use(authenticateJWT);
-// router.use(ensureLoggedIn);
+const { authenticateJWT,
+  ensureLoggedIn,
+  ensureCorrectUser } = require("../middleware/auth");
+
+router.use(authenticateJWT);
+router.use(ensureLoggedIn);
 
 /** GET /:id - get detail of message.
  *
@@ -20,8 +24,8 @@ const router = new Router();
  *
  **/
 router.get("/:id", async function (req, res, next) {
-
-  const message = await Message.get();
+  const { id } = req.params;
+  const message = await Message.get(id);
   return res.json({ message });
 });
 
@@ -33,8 +37,8 @@ router.get("/:id", async function (req, res, next) {
  *
  **/
 router.post("/", async function (req, res, next) {
-  const { username, to_username, body } = req.body;
-  const message = await Message.create([username, to_username, body]);
+  const { from_username, to_username, body } = req.body;
+  const message = await Message.create({from_username, to_username, body});
   return res.json({ message });
 });
 
@@ -46,7 +50,8 @@ router.post("/", async function (req, res, next) {
  * Makes sure that the only the intended recipient can mark as read.
  *
  **/
-router.post(":id/read", async function (req, res, next) {
+router.post("/:id/read", async function (req, res, next) {
+  const { id } = req.body;
   const message = await Message.markRead(id);
   return res.json({ message });
 
